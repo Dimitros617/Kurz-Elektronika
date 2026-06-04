@@ -1,0 +1,2 @@
+# Kurz-Elektronika
+Moje 
