@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>⚡ Hlasuj!</title>
+<style>
+  :root { --bg:#0b0e1a; --text:#eef1ff; --muted:#8b93b8; --border:rgba(255,255,255,.14);
+    --cA:#ff5d73; --cB:#ffb84d; --cC:#3ddc97; --cD:#5b8cff; }
+  * { box-sizing:border-box; margin:0; -webkit-tap-highlight-color:transparent; }
+  html,body { height:100%; }
+  body {
+    font-family:"Segoe UI",system-ui,sans-serif; color:var(--text);
+    background: linear-gradient(160deg,#0b0e1a,#141a3a,#1a0f33);
+    background-size: 300% 300%; animation: bgmove 18s ease infinite;
+    display:flex; flex-direction:column; padding:16px; gap:14px; overflow:hidden;
+  }
+  @keyframes bgmove { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
+
+  /* nick obrazovka */
+  #nickScreen { display:flex; flex-direction:column; justify-content:center; flex:1; gap:14px; text-align:center; }
+  #nickScreen h1 { font-size:2.2rem; }
+  #nickScreen input {
+    font-size:1.4rem; padding:14px; border-radius:14px; border:1px solid var(--border);
+    background:rgba(0,0,0,.35); color:var(--text); text-align:center; outline:none;
+  }
+  #nickScreen button {
+    font-size:1.3rem; font-weight:800; padding:16px; border:none; border-radius:14px;
+    background:linear-gradient(135deg,#5b8cff,#7b4dff); color:#fff;
+  }
+
+  /* hlasování */
+  #voteScreen { display:none; flex-direction:column; flex:1; gap:12px; min-height:0; }
+  #me { color:var(--muted); text-align:center; font-size:.95rem; }
+  #q {
+    font-size:1.35rem; font-weight:800; text-align:center; min-height:3.4rem;
+    display:flex; align-items:center; justify-content:center;
+  }
+  #btns { flex:1; display:grid; grid-template-rows:repeat(4,1fr); gap:12px; min-height:0; }
+  .vbtn {
+    border:none; border-radius:18px; color:#fff; font-family:inherit;
+    display:flex; align-items:center; gap:14px; padding:0 18px; text-align:left;
+    font-size:1.15rem; font-weight:700; transition:transform .1s;
+  }
+  .vbtn:active { transform:scale(.95); }
+  .vbtn .l { font-size:1.6rem; font-weight:900; opacity:.85; }
+  .vbtn.A {background:linear-gradient(135deg,#ff8298,var(--cA))} .vbtn.B {background:linear-gradient(135deg,#ffd08a,var(--cB)); color:#3a2800}
+  .vbtn.C {background:linear-gradient(135deg,#7af0c0,var(--cC)); color:#06321f} .vbtn.D {background:linear-gradient(135deg,#8fb0ff,var(--cD))}
+  .vbtn.sel { outline:4px solid #fff; }
+  #stav { text-align:center; min-height:1.5rem; font-weight:700; }
+  #stav.ok { color:var(--cC); animation:pop .4s ease; }
+  @keyframes pop { 40%{transform:scale(1.25)} }
+  #confetti { position:fixed; inset:0; pointer-events:none; }
+</style>
+</head>
+<body>
+<canvas id="confetti"></canvas>
+
+<div id="nickScreen">
+  <h1>⚡ Hlasuj!</h1>
+  <input id="nick" maxlength="20" placeholder="tvoje přezdívka">
+  <button id="go">Jdu hlasovat 🚀</button>
+</div>
+
+<div id="voteScreen">
+  <div id="me"></div>
+  <div id="q">Čekám na otázku…</div>
+  <div id="btns">
+    <button class="vbtn A" data-v="A"><span class="l">A</span><span class="t"></span></button>
+    <button class="vbtn B" data-v="B"><span class="l">B</span><span class="t"></span></button>
+    <button class="vbtn C" data-v="C"><span class="l">C</span><span class="t"></span></button>
+    <button class="vbtn D" data-v="D"><span class="l">D</span><span class="t"></span></button>
+  </div>
+  <div id="stav"></div>
+</div>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+let NICK = localStorage.getItem("kviz_nick") || "";
+let lastQ = -1;
+
+$("#nick").value = NICK;
+$("#go").onclick = () => {
+  NICK = $("#nick").value.trim();
+  if (!NICK) { $("#nick").focus(); return; }
+  localStorage.setItem("kviz_nick", NICK);
+  $("#nickScreen").style.display = "none";
+  $("#voteScreen").style.display = "flex";
+  $("#me").textContent = "Hlasuješ jako: " + NICK;
+};
+
+/* konfety */
+const canvas = $("#confetti"), ctx = canvas.getContext("2d");
+let parts = [];
+function resize(){ canvas.width=innerWidth; canvas.height=innerHeight; }
+addEventListener("resize", resize); resize();
+const COLORS = ["#ff5d73","#ffb84d","#3ddc97","#5b8cff","#fff"];
+function burst(x, y){
+  for (let i=0;i<40;i++){
+    const a=Math.random()*Math.PI*2, v=Math.random()*8+3;
+    parts.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-4,s:Math.random()*7+3,
+      c:COLORS[Math.random()*COLORS.length|0],r:Math.random()*Math.PI,vr:(Math.random()-.5)*.3,life:80});
+  }
+}
+(function loop(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  parts = parts.filter(p=>p.life-->0);
+  for (const p of parts){
+    p.x+=p.vx; p.y+=p.vy; p.vy+=.25; p.r+=p.vr;
+    ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.r);
+    ctx.globalAlpha=Math.min(1,p.life/30); ctx.fillStyle=p.c;
+    ctx.fillRect(-p.s/2,-p.s/2,p.s,p.s*.6); ctx.restore();
+  }
+  requestAnimationFrame(loop);
+})();
+
+/* hlasování */
+document.querySelectorAll(".vbtn").forEach(b => b.onclick = async (e) => {
+  const volba = b.dataset.v;
+  const r = await fetch("/api/odpoved?nick=" + encodeURIComponent(NICK), {
+    method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({volba})
+  });
+  const stav = $("#stav");
+  if (r.ok) {
+    document.querySelectorAll(".vbtn").forEach(x => x.classList.remove("sel"));
+    b.classList.add("sel");
+    stav.textContent = "✅ Odesláno! Sleduj plátno.";
+    stav.className = "ok"; void stav.offsetWidth; stav.classList.add("ok");
+    burst(e.clientX || innerWidth/2, e.clientY || innerHeight/2);
+    if (navigator.vibrate) navigator.vibrate(60);
+  } else {
+    stav.textContent = r.status === 409 ? "Ještě neběží žádná otázka…" : "Chyba, zkus znovu.";
+    stav.className = "";
+  }
+});
+
+/* polling otázky — stejný princip, jaký by měla ESP */
+async function poll(){
+  try {
+    const v = await (await fetch("/api/vysledky")).json();
+    if (!v.otazka_id) return;
+    if (v.otazka_id !== lastQ) {
+      lastQ = v.otazka_id;
+      document.querySelectorAll(".vbtn").forEach(x => x.classList.remove("sel"));
+      $("#stav").textContent = "";
+    }
+    $("#q").textContent = v.text;
+    for (const k of ["A","B","C","D"]) document.querySelector(".vbtn."+k+" .t").textContent = v.moznosti[k];
+  } catch {}
+}
+setInterval(poll, 1500);
+poll();
+</script>
+</body>
+</html>

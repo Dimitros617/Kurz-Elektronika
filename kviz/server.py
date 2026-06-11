@@ -239,7 +239,9 @@ def vysledky():
 
 @app.get("/api/info")
 def info():
-    """IP adresa serveru v lokální síti — UDP socket trik (nic se neposílá)."""
+    """IP adresa serveru v lokální síti. Funguje i bez internetu —
+    UDP connect nic neposílá, jen vybere odchozí rozhraní; když ani to
+    nejde, projdeme adresy počítače a vezmeme první privátní (192.168./10./172.)."""
     ip = "127.0.0.1"
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -248,9 +250,23 @@ def info():
         s.close()
     except OSError:
         pass
+    if ip == "127.0.0.1":
+        try:
+            adresy = socket.gethostbyname_ex(socket.gethostname())[2]
+            privatni = [a for a in adresy if a.startswith(("192.168.", "10.", "172."))]
+            if privatni:
+                ip = privatni[0]
+        except OSError:
+            pass
     return {"ip": ip, "port": 8000}
 
 
 @app.get("/")
 def index():
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/hlasuj")
+def hlasuj():
+    """Mobilní hlasování — náhrada ESP, když děti hlasují telefonem."""
+    return FileResponse(STATIC_DIR / "hlasuj.html")
