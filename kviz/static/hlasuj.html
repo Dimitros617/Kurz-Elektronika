@@ -50,6 +50,21 @@
   #stav { text-align:center; min-height:1.5rem; font-weight:700; }
   #stav.ok { color:var(--cC); animation:pop .4s ease; }
   @keyframes pop { 40%{transform:scale(1.25)} }
+
+  /* okénko do kódu — co telefon (a příští rok ESP) právě dělá */
+  #kod {
+    background:#0d1117; border:1px solid var(--border); border-radius:12px;
+    padding:10px 12px; font-family:Consolas,monospace; font-size:.68rem; line-height:1.5;
+    white-space:pre; overflow-x:auto; color:#9aa5ce;
+  }
+  #kod .hdr { color:var(--muted); font-family:inherit; }
+  #kod .fn  { color:#7ee787; }
+  #kod .str { color:#a5d6ff; }
+  #kod .line { display:block; border-radius:4px; }
+  #kod .line.flash { animation:flash .6s ease; }
+  @keyframes flash { 0%{background:rgba(91,140,255,.45)} 100%{background:transparent} }
+  #kod .line.sent { animation:sent .8s ease; }
+  @keyframes sent { 0%{background:rgba(61,220,151,.5)} 100%{background:transparent} }
   #confetti { position:fixed; inset:0; pointer-events:none; }
 </style>
 </head>
@@ -72,6 +87,7 @@
     <button class="vbtn D" data-v="D"><span class="l">D</span><span class="t"></span></button>
   </div>
   <div id="stav"></div>
+  <div id="kod"></div>
 </div>
 
 <script>
@@ -88,6 +104,7 @@ $("#go").onclick = () => {
   $("#nickScreen").style.display = "none";
   $("#voteScreen").style.display = "flex";
   $("#me").textContent = "Hlasuješ jako: " + NICK;
+  renderKod(null);
 };
 
 /* konfety */
@@ -129,16 +146,41 @@ document.querySelectorAll(".vbtn").forEach(b => b.onclick = async (e) => {
     stav.className = "ok"; void stav.offsetWidth; stav.classList.add("ok");
     burst(e.clientX || innerWidth/2, e.clientY || innerHeight/2);
     if (navigator.vibrate) navigator.vibrate(60);
+    renderKod(volba);
+    flashKod("kPost", "sent");
   } else {
     stav.textContent = r.status === 409 ? "Ještě neběží žádná otázka…" : "Chyba, zkus znovu.";
     stav.className = "";
   }
 });
 
+/* okénko do kódu — ukazuje, co telefon právě dělá (stejně jako ESP) */
+function esc(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+function renderKod(volba){
+  const url = "http://" + location.host;
+  const n = NICK || "tvuj-nick";
+  $("#kod").innerHTML =
+`<span class="hdr">// Tohle dělá tvůj telefon — a příští rok bude dělat tvoje ESP:</span>
+<span class="hdr"></span>
+<span class="hdr">// 1) POLLING: každé 2 s se ptáme serveru na otázku (GET)</span>
+<span class="line" id="kGet">http.begin(client, <span class="str">"${esc(url)}/api/otazka"</span>);
+http.<span class="fn">GET</span>();</span>
+<span class="hdr"></span>
+<span class="hdr">// 2) ODESLÁNÍ: tvoje odpověď letí na server (POST)</span>
+<span class="line" id="kPost">http.begin(client, <span class="str">"${esc(url)}/api/odpoved?nick=${esc(n)}"</span>);
+http.<span class="fn">POST</span>(<span class="str">"{\\"volba\\":\\"${volba || "?"}\\"}"</span>);</span>`;
+}
+function flashKod(id, cls){
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.remove("flash","sent"); void el.offsetWidth; el.classList.add(cls);
+}
+
 /* polling otázky — stejný princip, jaký by měla ESP */
 async function poll(){
   try {
     const v = await (await fetch("/api/vysledky")).json();
+    flashKod("kGet", "flash");   // polling proběhl — řádek s GET problikne
     if (!v.otazka_id) return;
     if (v.otazka_id !== lastQ) {
       lastQ = v.otazka_id;
