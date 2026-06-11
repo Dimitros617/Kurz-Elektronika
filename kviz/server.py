@@ -54,6 +54,11 @@ def init_db():
           cas TEXT DEFAULT (datetime('now')),
           PRIMARY KEY (otazka_id, nick)
         );
+        -- jednořádková tabulka: která otázka právě běží (lze vrátit i starou)
+        CREATE TABLE IF NOT EXISTS aktivni (
+          id INTEGER PRIMARY KEY CHECK (id = 1),
+          otazka_id INTEGER REFERENCES otazky(id)
+        );
         """)
 
 
@@ -61,7 +66,17 @@ init_db()
 
 
 def aktivni_otazka(con) -> sqlite3.Row | None:
-    return con.execute("SELECT * FROM otazky ORDER BY id DESC LIMIT 1").fetchone()
+    return con.execute(
+        "SELECT o.* FROM otazky o JOIN aktivni a ON o.id = a.otazka_id WHERE a.id = 1"
+    ).fetchone()
+
+
+def nastav_aktivni(con, otazka_id: int):
+    con.execute(
+        "INSERT INTO aktivni (id, otazka_id) VALUES (1, ?) "
+        "ON CONFLICT(id) DO UPDATE SET otazka_id=excluded.otazka_id",
+        (otazka_id,),
+    )
 
 
 # ---------------------------------------------------------------- ESP API
@@ -127,6 +142,7 @@ def admin_otazka(q: NovaOtazka):
             "INSERT INTO otazky (text, a, b, c, d) VALUES (?, ?, ?, ?, ?)",
             (q.text.strip(), q.a.strip(), q.b.strip(), q.c.strip(), q.d.strip()),
         )
+        nastav_aktivni(con, cur.lastrowid)
         return {"ok": True, "id": cur.lastrowid}
 
 
@@ -143,6 +159,20 @@ def admin_uprav_otazku(otazka_id: int, q: NovaOtazka):
         if cur.rowcount == 0:
             raise HTTPException(404, "Otazka neexistuje.")
     return {"ok": True, "id": otazka_id}
+
+
+class Aktivace(BaseModel):
+    id: int
+
+
+@app.post("/api/admin/aktivovat")
+def admin_aktivovat(body: Aktivace):
+    """Vrátí starou otázku zpět na plátno — i s odpověďmi, co u ní už jsou."""
+    with db() as con:
+        if con.execute("SELECT 1 FROM otazky WHERE id=?", (body.id,)).fetchone() is None:
+            raise HTTPException(404, "Otazka neexistuje.")
+        nastav_aktivni(con, body.id)
+    return {"ok": True, "id": body.id}
 
 
 @app.get("/api/admin/historie")

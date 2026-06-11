@@ -119,6 +119,34 @@ def test_historie(client):
     assert h[0]["id"] == 2 and "a" in h[0]
 
 
+def test_aktivace_stare_otazky(client):
+    # otázka 1 + 2 odpovědi
+    nova_otazka(client, text="První?")
+    client.post("/api/odpoved?nick=Pepa", json={"volba": "A"})
+    client.post("/api/odpoved?nick=Anicka", json={"volba": "B"})
+    # otázka 2 + odpověď
+    nova_otazka(client, text="Druhá?")
+    client.post("/api/odpoved?nick=Kuba", json={"volba": "C"})
+    # zpět na první — odpovědi dětí se vrátí s ní
+    r = client.post("/api/admin/aktivovat", json={"id": 1})
+    assert r.status_code == 200
+    v = client.get("/api/vysledky").json()
+    assert v["otazka_id"] == 1 and v["text"] == "První?"
+    assert v["nicky"]["A"] == ["Pepa"] and v["nicky"]["B"] == ["Anicka"]
+    # třetí dítě může doodpovědět ke staré otázce
+    client.post("/api/odpoved?nick=Terka", json={"volba": "A"})
+    v = client.get("/api/vysledky").json()
+    assert v["pocty"]["A"] == 2
+    # ESP polling vrací reaktivovanou otázku
+    assert client.get("/api/otazka").text.splitlines()[0] == "1"
+    # odpovědi u druhé otázky zůstaly netknuté
+    client.post("/api/admin/aktivovat", json={"id": 2})
+    v = client.get("/api/vysledky").json()
+    assert v["nicky"]["C"] == ["Kuba"]
+    # aktivace neexistující -> 404
+    assert client.post("/api/admin/aktivovat", json={"id": 99}).status_code == 404
+
+
 def test_info(client):
     r = client.get("/api/info")
     assert r.status_code == 200

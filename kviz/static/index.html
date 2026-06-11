@@ -207,7 +207,7 @@
       <button onclick="odhalit('C')">C</button>
       <button onclick="odhalit('D')">D</button>
     </div>
-    <h2 style="margin-top:16px">Historie <span style="opacity:.6;font-size:.8em">(klik = načíst do formuláře)</span></h2>
+    <h2 style="margin-top:16px">Historie <span style="opacity:.6;font-size:.8em">(klik = vrátit na plátno i s odpověďmi)</span></h2>
     <div id="history"></div>
   </section>
 
@@ -325,10 +325,15 @@ async function nactiHistorii() {
     item.className = "hist-item" + (q.id === editingId ? " active" : "");
     item.innerHTML = `<span class="num">${q.id}.</span><span class="htext"></span>`;
     item.querySelector(".htext").textContent = q.text;
-    item.onclick = () => {   // klik = načíst do formuláře (žádné locky, jen stringy)
+    item.onclick = async () => {
+      // klik = REAKTIVACE staré otázky: vrátí se na plátno i s odpověďmi dětí,
+      // do formuláře se načte a dá se dál editovat (Aplikovat = úprava téhle otázky)
       $("#fText").value = q.text; $("#fA").value = q.a; $("#fB").value = q.b;
       $("#fC").value = q.c; $("#fD").value = q.d;
-      $("#fText").focus();
+      await fetch("/api/admin/aktivovat", { method: "POST",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: q.id }) });
+      editingId = q.id;
+      nactiHistorii();
     };
     el.append(item);
   }
