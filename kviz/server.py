@@ -130,6 +130,30 @@ def admin_otazka(q: NovaOtazka):
         return {"ok": True, "id": cur.lastrowid}
 
 
+@app.put("/api/admin/otazka/{otazka_id}")
+def admin_uprav_otazku(otazka_id: int, q: NovaOtazka):
+    """Úprava otázky za běhu — odpovědi zůstávají navázané (stejné id)."""
+    if not q.text.strip():
+        raise HTTPException(400, "Otazka nesmi byt prazdna.")
+    with db() as con:
+        cur = con.execute(
+            "UPDATE otazky SET text=?, a=?, b=?, c=?, d=? WHERE id=?",
+            (q.text.strip(), q.a.strip(), q.b.strip(), q.c.strip(), q.d.strip(), otazka_id),
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(404, "Otazka neexistuje.")
+    return {"ok": True, "id": otazka_id}
+
+
+@app.get("/api/admin/historie")
+def admin_historie():
+    with db() as con:
+        rows = con.execute(
+            "SELECT id, text, a, b, c, d, spravna FROM otazky ORDER BY id DESC"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 class Odhaleni(BaseModel):
     volba: str
 

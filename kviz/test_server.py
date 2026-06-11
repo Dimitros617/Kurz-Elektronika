@@ -95,6 +95,30 @@ def test_nova_otazka_resetuje(client):
     assert v["spravna"] is None
 
 
+def test_uprava_otazky_za_behu(client):
+    nova_otazka(client)
+    client.post("/api/odpoved?nick=Pepa", json={"volba": "A"})
+    # úprava textu aktivní otázky — odpovědi zůstávají
+    r = client.put("/api/admin/otazka/1", json={"text": "Kolik je 2+3?", "a": "4", "b": "5", "c": "6", "d": "7"})
+    assert r.status_code == 200
+    v = client.get("/api/vysledky").json()
+    assert v["otazka_id"] == 1
+    assert v["text"] == "Kolik je 2+3?"
+    assert v["moznosti"]["B"] == "5"
+    assert v["pocty"]["A"] == 1  # odpověď přežila editaci
+    # update neexistující otázky -> 404
+    r = client.put("/api/admin/otazka/99", json={"text": "x", "a": "1", "b": "2", "c": "3", "d": "4"})
+    assert r.status_code == 404
+
+
+def test_historie(client):
+    nova_otazka(client, text="První?")
+    nova_otazka(client, text="Druhá?")
+    h = client.get("/api/admin/historie").json()
+    assert [q["text"] for q in h] == ["Druhá?", "První?"]  # nejnovější první
+    assert h[0]["id"] == 2 and "a" in h[0]
+
+
 def test_info(client):
     r = client.get("/api/info")
     assert r.status_code == 200

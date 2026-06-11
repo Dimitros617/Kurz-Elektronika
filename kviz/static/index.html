@@ -92,14 +92,25 @@
   .optrow .tag { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; font-weight: 800; flex: none; }
   .tag.A {background: var(--cA)} .tag.B {background: var(--cB); color:#222} .tag.C {background: var(--cC); color:#143} .tag.D {background: var(--cD)}
   .optrow input { margin-bottom: 0 !important; }
-  #admin .btns { display: flex; gap: 10px; margin-top: auto; padding-top: 14px; flex-wrap: wrap; }
+  #admin .btns { display: flex; gap: 10px; padding-top: 14px; flex-wrap: wrap; }
+  #nextBtn { background: linear-gradient(135deg, #2da37a, #1d7d5c); }
+  #history { flex: 1; overflow-y: auto; margin-top: 8px; min-height: 0; }
+  .hist-item {
+    padding: 8px 12px; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 6px;
+    cursor: pointer; font-size: .95rem; display: flex; gap: 8px; align-items: baseline;
+    transition: background .15s, border-color .15s;
+  }
+  .hist-item:hover { background: rgba(91,140,255,.15); border-color: #5b8cff; }
+  .hist-item.active { border-color: var(--cC); background: rgba(61,220,151,.1); }
+  .hist-item .num { color: var(--muted); font-weight: 700; flex: none; }
+  .hist-item .htext { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   button.big {
     flex: 1; padding: 14px 18px; font-size: 1.05rem; font-weight: 700; border: none; border-radius: 14px;
     cursor: pointer; color: white; transition: transform .15s ease, filter .15s;
   }
   button.big:hover { transform: translateY(-2px); filter: brightness(1.15); }
   button.big:active { transform: scale(.97); }
-  #startBtn { background: linear-gradient(135deg, #5b8cff, #7b4dff); }
+  #applyBtn { background: linear-gradient(135deg, #5b8cff, #7b4dff); }
   .revealrow { display: flex; gap: 8px; margin-top: 10px; }
   .revealrow button {
     flex: 1; padding: 10px 0; font-weight: 800; font-size: 1rem; border: 1px solid var(--border);
@@ -186,7 +197,8 @@
     <div class="optrow"><div class="tag C">C</div><input type="text" id="fC" placeholder="možnost C"></div>
     <div class="optrow"><div class="tag D">D</div><input type="text" id="fD" placeholder="možnost D"></div>
     <div class="btns">
-      <button class="big" id="startBtn">🚀 Uložit a spustit</button>
+      <button class="big" id="applyBtn">🚀 Aplikovat</button>
+      <button class="big" id="nextBtn">➡️ Další otázka</button>
     </div>
     <div class="revealrow">
       <button class="lbl">✅ Odhalit správnou:</button>
@@ -195,6 +207,8 @@
       <button onclick="odhalit('C')">C</button>
       <button onclick="odhalit('D')">D</button>
     </div>
+    <h2 style="margin-top:16px">Historie <span style="opacity:.6;font-size:.8em">(klik = načíst do formuláře)</span></h2>
+    <div id="history"></div>
   </section>
 
   <!-- ===== VÝSLEDKY ===== -->
@@ -272,17 +286,54 @@ function megaburst() {
   requestAnimationFrame(loop);
 })();
 
-/* ===== admin akce ===== */
-$("#startBtn").onclick = async () => {
-  const body = { text: $("#fText").value, a: $("#fA").value, b: $("#fB").value, c: $("#fC").value, d: $("#fD").value };
+/* ===== admin akce =====
+   editingId = id otázky, kterou Aplikovat upravuje.
+   null -> Aplikovat vytvoří NOVOU otázku (stane se aktivní).
+   Inputy se nečistí — text jde měnit za běhu a znovu Aplikovat. */
+let editingId = null;
+
+function formData() {
+  return { text: $("#fText").value, a: $("#fA").value, b: $("#fB").value, c: $("#fC").value, d: $("#fD").value };
+}
+
+$("#applyBtn").onclick = async () => {
+  const body = formData();
   if (!body.text.trim()) { $("#fText").focus(); return; }
-  const r = await fetch("/api/admin/otazka", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const url = editingId ? `/api/admin/otazka/${editingId}` : "/api/admin/otazka";
+  const r = await fetch(url, { method: editingId ? "PUT" : "POST",
+    headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   if (r.ok) {
-    for (const id of ["fText", "fA", "fB", "fC", "fD"]) $("#" + id).value = "";
-    $("#fText").focus();
+    editingId = (await r.json()).id;
     tone(880, .15, "sine");
+    nactiHistorii();
   }
 };
+
+$("#nextBtn").onclick = () => {
+  // stav už je v DB (poslední Aplikovat) — jen vyčistíme formulář pro novou
+  editingId = null;
+  for (const id of ["fText", "fA", "fB", "fC", "fD"]) $("#" + id).value = "";
+  $("#fText").focus();
+};
+
+async function nactiHistorii() {
+  const h = await (await fetch("/api/admin/historie")).json();
+  const el = $("#history");
+  el.innerHTML = "";
+  for (const q of h) {
+    const item = document.createElement("div");
+    item.className = "hist-item" + (q.id === editingId ? " active" : "");
+    item.innerHTML = `<span class="num">${q.id}.</span><span class="htext"></span>`;
+    item.querySelector(".htext").textContent = q.text;
+    item.onclick = () => {   // klik = načíst do formuláře (žádné locky, jen stringy)
+      $("#fText").value = q.text; $("#fA").value = q.a; $("#fB").value = q.b;
+      $("#fC").value = q.c; $("#fD").value = q.d;
+      $("#fText").focus();
+    };
+    el.append(item);
+  }
+}
+nactiHistorii();
 async function odhalit(v) {
   await fetch("/api/admin/odhalit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ volba: v }) });
 }
@@ -292,7 +343,7 @@ async function smazat(nick) {
 }
 
 /* ===== polling výsledků (stejný princip jako ESP dětí!) ===== */
-let lastQ = -1, lastTotal = 0, lastSpravna = null;
+let lastQ = -1, lastText = null, lastTotal = 0, lastSpravna = null;
 let known = new Set();   // nick|volba — kvůli fly-in animaci jen nových
 
 let typeTimer = null;
@@ -320,10 +371,16 @@ async function poll() {
 
   // nová otázka -> reset + typewriter
   if (v.otazka_id !== lastQ) {
-    lastQ = v.otazka_id; lastTotal = 0; lastSpravna = null; known = new Set();
+    lastQ = v.otazka_id; lastText = v.text; lastTotal = 0; lastSpravna = null; known = new Set();
     $("#chart").classList.remove("revealed");
     document.querySelectorAll(".chips").forEach(c => c.innerHTML = "");
     typewriter(v.text);
+    nactiHistorii();
+  } else if (v.text !== lastText) {
+    // stejná otázka, jen upravený text (Aplikovat za běhu) — odpovědi zůstávají
+    lastText = v.text;
+    typewriter(v.text);
+    nactiHistorii();
   }
 
   const total = VOLBY.reduce((s, k) => s + v.pocty[k], 0);
@@ -363,11 +420,13 @@ async function poll() {
     }
   }
 
-  // počítadlo
-  if (total !== lastTotal) {
-    const c = $("#counter");
-    c.textContent = `🔥 ${total} hlasů`;
-    c.classList.remove("pop"); void c.offsetWidth; c.classList.add("pop");
+  // počítadlo (česky: 1 hlas, 2-4 hlasy, 5+ hlasů)
+  const slovo = total === 1 ? "hlas" : (total >= 2 && total <= 4 ? "hlasy" : "hlasů");
+  const c = $("#counter");
+  const label = `🔥 ${total} ${slovo}`;
+  if (c.textContent !== label) {
+    c.textContent = label;
+    if (total > lastTotal) { c.classList.remove("pop"); void c.offsetWidth; c.classList.add("pop"); }
     lastTotal = total;
   }
 
